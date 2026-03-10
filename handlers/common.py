@@ -2,7 +2,6 @@ from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 import keyboards as kb
-from database import add_user, get_balance
 from database import db  # вместо from database import add_user, get_balance
 
 router = Router()
@@ -35,3 +34,4 @@ async def back_to_main(message: types.Message, state: FSMContext):
 async def cmd_myid(message: types.Message):
 
     await message.answer(f"Ваш user_id: {message.from_user.id}")
+
