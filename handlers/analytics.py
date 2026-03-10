@@ -2,7 +2,7 @@ from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from states import AnalyticsPeriod
-from database import get_transactions_by_day, get_transactions_by_period, get_expenses_by_category
+from database import db
 from calendar_utils import generate_calendar, process_calendar_callback, generate_year_selector
 from datetime import datetime, timedelta
 import utils
@@ -146,4 +146,5 @@ async def show_analytics(message: types.Message, state: FSMContext, transactions
         else:
             text += "\n💸 Расходов нет."
     await message.answer(text)
+
     await state.clear()
