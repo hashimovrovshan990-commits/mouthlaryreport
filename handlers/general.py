@@ -4,7 +4,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import keyboards as kb
 from states import GeneralChoice
-from database import get_balance, get_transactions_by_period, get_total_by_category
+from database import db
 from calendar_utils import generate_calendar, process_calendar_callback, generate_year_selector
 from datetime import datetime, timedelta
 import utils
@@ -153,4 +153,5 @@ async def show_recent(message: types.Message):
             if t[3]:
                 text += f" ({t[3]})"
             text += f" – {utils.format_date_ru(t[4])}\n"
+
     await message.answer(text)
