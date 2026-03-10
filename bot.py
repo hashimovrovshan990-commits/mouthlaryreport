@@ -3,18 +3,21 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
-from database import init_db
+from database import db
 from handlers import common, expense, income, analytics, general
-from middlewares import AccessMiddleware, CallbackAccessMiddleware  # импорт
+from middlewares import AccessMiddleware, CallbackAccessMiddleware
 
 logging.basicConfig(level=logging.INFO)
 
 async def main():
-    init_db()
+    # Инициализируем подключение к базе данных
+    await db.create_pool()
+    print("✅ База данных PostgreSQL подключена")
+    
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
     
-    # Регистрируем мидлвари ДО подключения роутеров
+    # Регистрируем мидлвари
     dp.message.middleware(AccessMiddleware())
     dp.callback_query.middleware(CallbackAccessMiddleware())
     
