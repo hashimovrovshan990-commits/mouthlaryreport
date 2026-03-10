@@ -1,4 +1,4 @@
-from aiogram import Router, types, F
+from aiogram import Router, types, 
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -279,4 +279,5 @@ async def delete_execute(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text("❌ Ошибка при удалении.")
     await state.clear()
     await callback.message.answer("Главное меню", reply_markup=kb.main_menu)
+
     await callback.answer()
