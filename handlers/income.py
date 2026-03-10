@@ -7,6 +7,7 @@ from states import AddIncome, EditIncome, DeleteIncome
 from database import add_transaction, get_recent_transactions, delete_transaction, update_transaction
 from calendar_utils import generate_calendar, process_calendar_callback, generate_year_selector
 from datetime import datetime
+from database import db
 import utils
 
 router = Router()
@@ -265,4 +266,5 @@ async def delete_income_execute(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text("❌ Ошибка при удалении.")
     await state.clear()
     await callback.message.answer("Главное меню", reply_markup=kb.main_menu)
+
     await callback.answer()
