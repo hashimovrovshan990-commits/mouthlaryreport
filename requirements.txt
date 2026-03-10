@@ -1,0 +1,6 @@
+aiogram
+openpyxl
+aiohttp
+matplotlib
+aiosqlite
+psycopg2-binary
