@@ -19,7 +19,6 @@ class GeneralChoice(StatesGroup):
     period_type = State()
     choosing = State()
 
-# Редактирование и удаление расходов
 class EditExpense(StatesGroup):
     choosing_transaction = State()
     choosing_field = State()
@@ -29,7 +28,6 @@ class DeleteExpense(StatesGroup):
     confirming = State()
     transaction_id = State()
 
-# Редактирование и удаление доходов
 class EditIncome(StatesGroup):
     choosing_transaction = State()
     choosing_field = State()
