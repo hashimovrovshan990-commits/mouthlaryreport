@@ -4,7 +4,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import keyboards as kb
 from states import AddExpense, EditExpense, DeleteExpense
-from database import db
+from database import db  # импортируем объект базы данных
 from calendar_utils import generate_calendar, process_calendar_callback, generate_year_selector
 from datetime import datetime
 import utils
@@ -20,7 +20,6 @@ async def expense_menu(message: types.Message, state: FSMContext):
 # Добавление расхода
 @router.message(lambda msg: msg.text == "➕ Добавить расход")
 async def add_expense_start(message: types.Message, state: FSMContext):
-    # Сохраняем user_id в состоянии
     await state.update_data(user_id=message.from_user.id)
     today = datetime.now()
     calendar = await generate_calendar(today.year, today.month)
@@ -95,10 +94,8 @@ async def process_expense_amount(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer("Пожалуйста, введите число.")
 
-# Обработчик кнопки "Пропустить" – теперь user_id берётся из состояния
 @router.callback_query(AddExpense.description, F.data == "skip_comment")
 async def skip_expense_comment(callback: CallbackQuery, state: FSMContext):
-    print("skip_expense_comment вызван")
     await finish_expense(callback.message, state, "")
     await callback.answer()
 
@@ -110,19 +107,14 @@ async def finish_expense(message_or_chat, state: FSMContext, comment: str):
     data = await state.get_data()
     user_id = data.get('user_id')
     if not user_id:
-        # fallback – если вдруг user_id нет в состоянии (маловероятно)
         user_id = message_or_chat.from_user.id
-        print(f"Warning: user_id not in state, using {user_id}")
-
-    print(f"finish_expense: user_id={user_id}, comment='{comment}'")
 
     if not data.get('date') or not data.get('category') or not data.get('amount'):
-        print("Ошибка: не хватает данных в состоянии")
         await message_or_chat.answer("❌ Ошибка: данные не найдены. Попробуйте снова.")
         await state.clear()
         return
 
-    add_transaction(
+    await db.add_transaction(
         user_id=user_id,
         t_type='expense',
         amount=data['amount'],
@@ -130,14 +122,6 @@ async def finish_expense(message_or_chat, state: FSMContext, comment: str):
         description=comment,
         date=data['date']
     )
-    print(f"Добавлен расход: user_id={user_id}, amount={data['amount']}, date={data['date']}")
-
-    # Проверка сразу после добавления
-    from database import get_transactions_by_day
-    check = get_transactions_by_day(user_id, data['date'])
-    print(f"Проверка сразу после добавления: найдено {len(check)} записей за {data['date']}")
-    if check:
-        print("Запись:", check[0])
 
     await state.clear()
     await message_or_chat.answer(
@@ -149,11 +133,11 @@ async def finish_expense(message_or_chat, state: FSMContext, comment: str):
         reply_markup=kb.expense_submenu
     )
 
-# Изменение расхода (без изменений, оставляем как есть)
+# Изменение расхода
 @router.message(lambda msg: msg.text == "✏️ Изменить расход")
 async def edit_expense_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    transactions = get_recent_transactions(user_id, t_type='expense', limit=10)
+    transactions = await db.get_recent_transactions(user_id, t_type='expense', limit=10)
     if not transactions:
         await message.answer("У вас нет расходов для изменения.")
         return
@@ -206,7 +190,6 @@ async def edit_choose_field(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(prompts.get(field, "Введите новое значение:"))
     await callback.answer()
 
-# Обработчик для отмены на этапе выбора поля
 @router.callback_query(EditExpense.choosing_field, F.data == "edit_cancel")
 async def edit_cancel_from_field(callback: CallbackQuery, state: FSMContext):
     await state.clear()
@@ -222,7 +205,7 @@ async def edit_new_value(message: types.Message, state: FSMContext):
     new_val = message.text.strip()
     user_id = message.from_user.id
 
-    success = update_transaction(t_id, user_id, field, new_val)
+    success = await db.update_transaction(t_id, user_id, field, new_val)
     if success:
         await message.answer("✅ Расход успешно обновлён!")
     else:
@@ -230,11 +213,11 @@ async def edit_new_value(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Главное меню", reply_markup=kb.main_menu)
 
-# Удаление расхода (без изменений)
+# Удаление расхода
 @router.message(lambda msg: msg.text == "❌ Удалить расход")
 async def delete_expense_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    transactions = get_recent_transactions(user_id, t_type='expense', limit=10)
+    transactions = await db.get_recent_transactions(user_id, t_type='expense', limit=10)
     if not transactions:
         await message.answer("У вас нет расходов для удаления.")
         return
@@ -272,14 +255,11 @@ async def delete_confirm(callback: CallbackQuery, state: FSMContext):
 async def delete_execute(callback: CallbackQuery, state: FSMContext):
     t_id = int(callback.data.split("_")[2])
     user_id = callback.from_user.id
-    success = delete_transaction(t_id, user_id)
+    success = await db.delete_transaction(t_id, user_id)
     if success:
         await callback.message.edit_text("✅ Расход удалён.")
     else:
         await callback.message.edit_text("❌ Ошибка при удалении.")
     await state.clear()
     await callback.message.answer("Главное меню", reply_markup=kb.main_menu)
-
     await callback.answer()
-
-
