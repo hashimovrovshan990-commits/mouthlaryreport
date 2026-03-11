@@ -1,8 +1,10 @@
 import asyncpg
+import logging
 from datetime import datetime
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+logger = logging.getLogger(__name__)
 
 class Database:
     def __init__(self):
@@ -46,7 +48,6 @@ class Database:
             ''', user_id, username, first_name, datetime.now())
 
     async def add_transaction(self, user_id, t_type, amount, category, description, date):
-        # date может быть строкой ISO или объектом date
         if isinstance(date, str):
             try:
                 date_obj = datetime.fromisoformat(date).date()
@@ -78,8 +79,6 @@ class Database:
             return balance, income, expense
 
     async def get_transactions_by_period(self, user_id, start_date, end_date):
-        """start_date и end_date в формате ISO (строки)"""
-        # Преобразуем строки в объекты date
         start = datetime.fromisoformat(start_date).date() if isinstance(start_date, str) else start_date
         end = datetime.fromisoformat(end_date).date() if isinstance(end_date, str) else end_date
 
@@ -93,8 +92,6 @@ class Database:
             return [(r['type'], r['amount'], r['category'], r['description'], r['date'].isoformat()) for r in rows]
 
     async def get_transactions_by_day(self, user_id, date_iso):
-        """date_iso в формате ISO (строка)"""
-        # Преобразуем строку в объект date
         date_obj = datetime.fromisoformat(date_iso).date() if isinstance(date_iso, str) else date_iso
 
         async with self.pool.acquire() as conn:
@@ -160,12 +157,19 @@ class Database:
             return [(r['id'], r['type'], r['amount'], r['category'], r['description'], r['date'].isoformat()) for r in rows]
 
     async def delete_transaction(self, transaction_id, user_id):
-        async with self.pool.acquire() as conn:
-            result = await conn.execute('''
-                DELETE FROM transactions 
-                WHERE id=$1 AND user_id=$2
-            ''', transaction_id, user_id)
-            return result == "DELETE 1"
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.execute('''
+                    DELETE FROM transactions 
+                    WHERE id=$1 AND user_id=$2
+                ''', transaction_id, user_id)
+                logger.info(f"delete_transaction raw result: {result}")
+                success = result == "DELETE 1"
+                logger.info(f"delete_transaction success: {success}")
+                return success
+        except Exception as e:
+            logger.error(f"Ошибка в delete_transaction: {e}", exc_info=True)
+            return False
 
     async def update_transaction(self, transaction_id, user_id, field, new_value):
         allowed_fields = {'amount', 'category', 'description', 'date'}
@@ -173,7 +177,6 @@ class Database:
             return False
         async with self.pool.acquire() as conn:
             if field == 'date':
-                # Преобразуем строку в объект date (может быть ДД.ММ.ГГГГ или ISO)
                 try:
                     date_obj = datetime.strptime(new_value, "%d.%m.%Y").date()
                 except ValueError:
@@ -188,5 +191,4 @@ class Database:
             )
             return True
 
-# Создаём глобальный экземпляр базы данных
 db = Database()
