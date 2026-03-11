@@ -7,7 +7,6 @@ from states import AddIncome, EditIncome, DeleteIncome
 from database import db
 from calendar_utils import generate_calendar, process_calendar_callback, generate_year_selector
 from datetime import datetime
-from database import db
 import utils
 
 router = Router()
@@ -36,7 +35,6 @@ async def add_earning_start(message: types.Message, state: FSMContext):
     await state.set_state(AddIncome.date)
     await message.answer("Выберите дату заработка:", reply_markup=calendar)
 
-# Обработка календаря для доходов
 @router.callback_query(AddIncome.date)
 async def process_income_calendar(callback: CallbackQuery, state: FSMContext):
     result = process_calendar_callback(callback.data)
@@ -79,7 +77,6 @@ async def process_income_calendar(callback: CallbackQuery, state: FSMContext):
     else:
         await callback.answer()
 
-# Ввод суммы
 @router.message(AddIncome.amount)
 async def process_income_amount(message: types.Message, state: FSMContext):
     try:
@@ -98,14 +95,11 @@ async def process_income_amount(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer("Пожалуйста, введите число.")
 
-# Обработчик кнопки "Пропустить"
 @router.callback_query(AddIncome.description, F.data == "skip_comment")
 async def skip_income_comment(callback: CallbackQuery, state: FSMContext):
-    print("skip_income_comment вызван")
     await finish_income(callback.message, state, "")
     await callback.answer()
 
-# Ввод комментария
 @router.message(AddIncome.description)
 async def process_income_comment(message: types.Message, state: FSMContext):
     await finish_income(message, state, message.text.strip())
@@ -115,17 +109,13 @@ async def finish_income(message_or_chat, state: FSMContext, comment: str):
     user_id = data.get('user_id')
     if not user_id:
         user_id = message_or_chat.from_user.id
-        print(f"Warning: user_id not in state, using {user_id}")
-
-    print(f"finish_income: user_id={user_id}, comment='{comment}'")
 
     if not data.get('date') or not data.get('amount') or not data.get('income_type'):
-        print("Ошибка: не хватает данных в состоянии")
         await message_or_chat.answer("❌ Ошибка: данные не найдены. Попробуйте снова.")
         await state.clear()
         return
 
-    add_transaction(
+    await db.add_transaction(
         user_id=user_id,
         t_type='income',
         amount=data['amount'],
@@ -133,7 +123,6 @@ async def finish_income(message_or_chat, state: FSMContext, comment: str):
         description=comment,
         date=data['date']
     )
-    print(f"Добавлен доход: user_id={user_id}, amount={data['amount']}, date={data['date']}")
 
     await state.clear()
     await message_or_chat.answer(
@@ -144,11 +133,11 @@ async def finish_income(message_or_chat, state: FSMContext, comment: str):
         reply_markup=kb.income_submenu
     )
 
-# Изменение дохода (без изменений)
+# Изменение дохода
 @router.message(lambda msg: msg.text == "✏️ Изменить доход")
 async def edit_income_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    transactions = get_recent_transactions(user_id, t_type='income', limit=10)
+    transactions = await db.get_recent_transactions(user_id, t_type='income', limit=10)
     if not transactions:
         await message.answer("У вас нет доходов для изменения.")
         return
@@ -209,7 +198,7 @@ async def edit_income_value(message: types.Message, state: FSMContext):
     new_val = message.text.strip()
     user_id = message.from_user.id
 
-    success = update_transaction(t_id, user_id, field, new_val)
+    success = await db.update_transaction(t_id, user_id, field, new_val)
     if success:
         await message.answer("✅ Доход успешно обновлён!")
     else:
@@ -221,7 +210,7 @@ async def edit_income_value(message: types.Message, state: FSMContext):
 @router.message(lambda msg: msg.text == "❌ Удалить доход")
 async def delete_income_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    transactions = get_recent_transactions(user_id, t_type='income', limit=10)
+    transactions = await db.get_recent_transactions(user_id, t_type='income', limit=10)
     if not transactions:
         await message.answer("У вас нет доходов для удаления.")
         return
@@ -259,13 +248,11 @@ async def delete_income_confirm(callback: CallbackQuery, state: FSMContext):
 async def delete_income_execute(callback: CallbackQuery, state: FSMContext):
     t_id = int(callback.data.split("_")[3])
     user_id = callback.from_user.id
-    success = delete_transaction(t_id, user_id)
+    success = await db.delete_transaction(t_id, user_id)
     if success:
         await callback.message.edit_text("✅ Доход удалён.")
     else:
         await callback.message.edit_text("❌ Ошибка при удалении.")
     await state.clear()
     await callback.message.answer("Главное меню", reply_markup=kb.main_menu)
-
     await callback.answer()
-
