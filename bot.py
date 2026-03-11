@@ -14,7 +14,10 @@ from handlers import common, expense, income, analytics, general
 from database import db
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Переменные окружения
@@ -23,7 +26,7 @@ if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN не задан в переменных окружения")
 
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
-PORT = int(os.getenv("PORT", 8000))
+PORT = int(os.getenv("PORT", 10000))  # Render по умолчанию использует порт 10000
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
@@ -41,35 +44,33 @@ dp.include_router(general.router)
 # --- Веб-сервер Starlette ---
 
 async def telegram_webhook(request: Request) -> Response:
+    """Обрабатывает входящие запросы от Telegram."""
     logger.info("Получен POST-запрос на /telegram")
     try:
-        # Проверим, что база данных доступна (опционально)
+        # Проверяем, что пул базы данных инициализирован
         if not db.pool:
             logger.error("Пул базы данных не инициализирован!")
             return Response(status_code=500)
 
-        # Получаем JSON из запроса
         update_data = await request.json()
         logger.debug(f"Получен update: {update_data}")
 
-        # Преобразуем в объект Update
         update = types.Update(**update_data)
-
-        # Передаём в диспетчер
         await dp.feed_update(bot, update)
         logger.info("Update успешно обработан")
         return Response(status_code=200)
 
     except Exception as e:
-        # Логируем полную информацию об ошибке
         logger.error(f"Ошибка при обработке веб-хука: {e}")
         logger.error(traceback.format_exc())
         return Response(status_code=500)
 
 async def health_check(request: Request) -> PlainTextResponse:
+    """Health check для Render."""
     return PlainTextResponse("OK")
 
 async def root(request: Request) -> PlainTextResponse:
+    """Корневой маршрут для проверки."""
     return PlainTextResponse("Bot is running. Webhook path: /telegram")
 
 app = Starlette(routes=[
@@ -79,28 +80,51 @@ app = Starlette(routes=[
 ])
 
 async def on_startup():
+    """Действия при запуске: подключение к БД и установка веб-хука."""
     logger.info("Запуск приложения...")
-    await db.create_pool()
+
+    # Подключаемся к базе данных с повторными попытками
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            await db.create_pool()
+            logger.info("✅ База данных PostgreSQL подключена")
+            break
+        except Exception as e:
+            if attempt == max_retries - 1:
+                logger.error(f"❌ Не удалось подключиться к БД после {max_retries} попыток: {e}")
+                raise
+            logger.warning(f"⚠️ Попытка {attempt+1}/{max_retries} подключения к БД не удалась, повтор через 2с")
+            await asyncio.sleep(2)
+
+    # Устанавливаем веб-хук
     webhook_url = f"{RENDER_URL}/telegram"
     logger.info(f"Установка веб-хука на {webhook_url}")
 
-    # Проверим текущий веб-хук
-    webhook_info = await bot.get_webhook_info()
-    logger.info(f"Текущий веб-хук: {webhook_info.url}")
+    try:
+        webhook_info = await bot.get_webhook_info()
+        logger.info(f"Текущий веб-хук: {webhook_info.url}")
 
-    if webhook_info.url != webhook_url:
-        result = await bot.set_webhook(webhook_url)
-        if result:
-            logger.info(f"✅ Веб-хук успешно установлен на {webhook_url}")
+        if webhook_info.url != webhook_url:
+            result = await bot.set_webhook(webhook_url)
+            if result:
+                logger.info(f"✅ Веб-хук успешно установлен на {webhook_url}")
+            else:
+                logger.error("❌ Не удалось установить веб-хук")
         else:
-            logger.error("❌ Не удалось установить веб-хук")
-    else:
-        logger.info("Веб-хук уже правильный")
+            logger.info("Веб-хук уже правильный")
+    except Exception as e:
+        logger.error(f"Ошибка при установке веб-хука: {e}")
+        logger.error(traceback.format_exc())
 
 async def on_shutdown():
+    """Действия при остановке: удаление веб-хука и закрытие соединений."""
     logger.info("Остановка приложения...")
-    await bot.delete_webhook()
-    await bot.session.close()
+    try:
+        await bot.delete_webhook()
+        await bot.session.close()
+    except Exception as e:
+        logger.error(f"Ошибка при завершении: {e}")
 
 app.add_event_handler("startup", on_startup)
 app.add_event_handler("shutdown", on_shutdown)
