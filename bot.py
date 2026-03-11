@@ -13,26 +13,22 @@ from middlewares import AccessMiddleware, CallbackAccessMiddleware
 from handlers import common, expense, income, analytics, general
 from database import db
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Переменные окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN не задан в переменных окружения")
 
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
-PORT = int(os.getenv("PORT", 10000))  # Render по умолчанию использует порт 10000
+PORT = int(os.getenv("PORT", 10000))
 
-# Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# Подключаем мидлвари и роутеры
 dp.message.middleware(AccessMiddleware())
 dp.callback_query.middleware(CallbackAccessMiddleware())
 dp.include_router(common.router)
@@ -41,13 +37,9 @@ dp.include_router(income.router)
 dp.include_router(analytics.router)
 dp.include_router(general.router)
 
-# --- Веб-сервер Starlette ---
-
 async def telegram_webhook(request: Request) -> Response:
-    """Обрабатывает входящие запросы от Telegram."""
     logger.info("Получен POST-запрос на /telegram")
     try:
-        # Проверяем, что пул базы данных инициализирован
         if not db.pool:
             logger.error("Пул базы данных не инициализирован!")
             return Response(status_code=500)
@@ -66,11 +58,9 @@ async def telegram_webhook(request: Request) -> Response:
         return Response(status_code=500)
 
 async def health_check(request: Request) -> PlainTextResponse:
-    """Health check для Render."""
     return PlainTextResponse("OK")
 
 async def root(request: Request) -> PlainTextResponse:
-    """Корневой маршрут для проверки."""
     return PlainTextResponse("Bot is running. Webhook path: /telegram")
 
 app = Starlette(routes=[
@@ -80,10 +70,7 @@ app = Starlette(routes=[
 ])
 
 async def on_startup():
-    """Действия при запуске: подключение к БД и установка веб-хука."""
     logger.info("Запуск приложения...")
-
-    # Подключаемся к базе данных с повторными попытками
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -97,7 +84,6 @@ async def on_startup():
             logger.warning(f"⚠️ Попытка {attempt+1}/{max_retries} подключения к БД не удалась, повтор через 2с")
             await asyncio.sleep(2)
 
-    # Устанавливаем веб-хук
     webhook_url = f"{RENDER_URL}/telegram"
     logger.info(f"Установка веб-хука на {webhook_url}")
 
@@ -118,7 +104,6 @@ async def on_startup():
         logger.error(traceback.format_exc())
 
 async def on_shutdown():
-    """Действия при остановке: удаление веб-хука и закрытие соединений."""
     logger.info("Остановка приложения...")
     try:
         await bot.delete_webhook()
