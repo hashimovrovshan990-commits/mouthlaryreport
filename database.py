@@ -9,12 +9,10 @@ class Database:
         self.pool = None
 
     async def create_pool(self):
-        """Создаёт пул соединений к базе данных"""
         self.pool = await asyncpg.create_pool(DATABASE_URL)
         await self.init_db()
 
     async def init_db(self):
-        """Создаёт таблицы, если их нет"""
         async with self.pool.acquire() as conn:
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS users (
@@ -48,13 +46,11 @@ class Database:
             ''', user_id, username, first_name, datetime.now())
 
     async def add_transaction(self, user_id, t_type, amount, category, description, date):
-        """Добавляет транзакцию. date может быть строкой ISO или объектом date."""
-        # Преобразуем строку в объект date, если необходимо
+        # date может быть строкой ISO или объектом date
         if isinstance(date, str):
             try:
                 date_obj = datetime.fromisoformat(date).date()
             except ValueError:
-                # Если строка в другом формате, пробуем стандартный парсинг
                 date_obj = datetime.strptime(date, "%Y-%m-%d").date()
         else:
             date_obj = date
@@ -83,26 +79,37 @@ class Database:
 
     async def get_transactions_by_period(self, user_id, start_date, end_date):
         """start_date и end_date в формате ISO (строки)"""
+        # Преобразуем строки в объекты date
+        start = datetime.fromisoformat(start_date).date() if isinstance(start_date, str) else start_date
+        end = datetime.fromisoformat(end_date).date() if isinstance(end_date, str) else end_date
+
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT type, amount, category, description, date 
                 FROM transactions 
                 WHERE user_id=$1 AND date BETWEEN $2 AND $3
                 ORDER BY date DESC
-            ''', user_id, start_date, end_date)
+            ''', user_id, start, end)
             return [(r['type'], r['amount'], r['category'], r['description'], r['date'].isoformat()) for r in rows]
 
     async def get_transactions_by_day(self, user_id, date_iso):
+        """date_iso в формате ISO (строка)"""
+        # Преобразуем строку в объект date
+        date_obj = datetime.fromisoformat(date_iso).date() if isinstance(date_iso, str) else date_iso
+
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT type, amount, category, description, date 
                 FROM transactions 
                 WHERE user_id=$1 AND date=$2
                 ORDER BY date DESC
-            ''', user_id, date_iso)
+            ''', user_id, date_obj)
             return [(r['type'], r['amount'], r['category'], r['description'], r['date'].isoformat()) for r in rows]
 
     async def get_expenses_by_category(self, user_id, start_date, end_date):
+        start = datetime.fromisoformat(start_date).date() if isinstance(start_date, str) else start_date
+        end = datetime.fromisoformat(end_date).date() if isinstance(end_date, str) else end_date
+
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT category, SUM(amount) as total 
@@ -110,18 +117,20 @@ class Database:
                 WHERE user_id=$1 AND type='expense' AND date BETWEEN $2 AND $3
                 GROUP BY category
                 ORDER BY total DESC
-            ''', user_id, start_date, end_date)
+            ''', user_id, start, end)
             return [(r['category'], r['total']) for r in rows]
 
     async def get_total_by_category(self, user_id, t_type, category, start_date=None, end_date=None):
         async with self.pool.acquire() as conn:
             if start_date and end_date:
+                start = datetime.fromisoformat(start_date).date() if isinstance(start_date, str) else start_date
+                end = datetime.fromisoformat(end_date).date() if isinstance(end_date, str) else end_date
                 result = await conn.fetchval('''
                     SELECT COALESCE(SUM(amount), 0)
                     FROM transactions 
                     WHERE user_id=$1 AND type=$2 AND category=$3 
                       AND date BETWEEN $4 AND $5
-                ''', user_id, t_type, category, start_date, end_date)
+                ''', user_id, t_type, category, start, end)
             else:
                 result = await conn.fetchval('''
                     SELECT COALESCE(SUM(amount), 0)
@@ -166,11 +175,9 @@ class Database:
             if field == 'date':
                 # Преобразуем строку в объект date (может быть ДД.ММ.ГГГГ или ISO)
                 try:
-                    # Сначала пробуем ДД.ММ.ГГГГ
                     date_obj = datetime.strptime(new_value, "%d.%m.%Y").date()
                 except ValueError:
                     try:
-                        # Пробуем ISO
                         date_obj = datetime.fromisoformat(new_value).date()
                     except ValueError:
                         return False
