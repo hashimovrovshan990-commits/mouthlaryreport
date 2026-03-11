@@ -14,8 +14,8 @@ router = Router()
 @router.message(lambda msg: msg.text == "📅 Общий")
 async def general_main(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    balance, total_income, total_expense = get_balance(user_id)
-    earnings = get_total_by_category(user_id, 'income', 'заработок')
+    balance, total_income, total_expense = await db.get_balance(user_id)
+    earnings = await db.get_total_by_category(user_id, 'income', 'заработок')
 
     text = (
         f"💰 *Основной баланс:*\n"
@@ -123,7 +123,7 @@ async def process_general_calendar(callback: CallbackQuery, state: FSMContext):
 
 async def show_period_operations(message: types.Message, state: FSMContext, start, end, period_name):
     user_id = message.chat.id
-    transactions = get_transactions_by_period(user_id, start, end)
+    transactions = await db.get_transactions_by_period(user_id, start, end)
     if not transactions:
         text = f"📋 За период {period_name} нет операций."
     else:
@@ -141,7 +141,7 @@ async def show_recent(message: types.Message):
     user_id = message.chat.id
     end = datetime.now().date().isoformat()
     start = (datetime.now() - timedelta(days=365)).date().isoformat()
-    transactions = get_transactions_by_period(user_id, start, end)
+    transactions = await db.get_transactions_by_period(user_id, start, end)
     recent = sorted(transactions, key=lambda x: x[4], reverse=True)[:10]
     if not recent:
         text = "🕒 Нет операций."
@@ -153,5 +153,4 @@ async def show_recent(message: types.Message):
             if t[3]:
                 text += f" ({t[3]})"
             text += f" – {utils.format_date_ru(t[4])}\n"
-
     await message.answer(text)
