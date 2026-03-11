@@ -5,3 +5,5 @@ aiohttp
 matplotlib
 aiosqlite
 psycopg2-binary
+starlette
+uvicorn
