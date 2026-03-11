@@ -10,7 +10,6 @@ class AccessMiddleware(BaseMiddleware):
         event: Message,
         data: Dict[str, Any]
     ) -> Any:
-        print(f"AccessMiddleware: user_id={event.from_user.id}")  # отладка
         if event.from_user.id != ADMIN_ID:
             await event.answer("⛔ У вас нет доступа к этому боту.")
             return
@@ -23,7 +22,6 @@ class CallbackAccessMiddleware(BaseMiddleware):
         event: CallbackQuery,
         data: Dict[str, Any]
     ) -> Any:
-        print(f"CallbackAccessMiddleware: user_id={event.from_user.id}")  # отладка
         if event.from_user.id != ADMIN_ID:
             await event.answer("У вас нет доступа", show_alert=True)
             return
