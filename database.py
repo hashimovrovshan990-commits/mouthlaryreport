@@ -16,7 +16,6 @@ class Database:
     async def init_db(self):
         """Создаёт таблицы, если их нет"""
         async with self.pool.acquire() as conn:
-            # Таблица пользователей
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     user_id BIGINT PRIMARY KEY,
@@ -25,8 +24,6 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            
-            # Таблица транзакций
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS transactions (
                     id SERIAL PRIMARY KEY,
@@ -39,13 +36,10 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            
-            # Индексы для быстрого поиска
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, date)')
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)')
 
     async def add_user(self, user_id, username, first_name):
-        """Добавляет пользователя, если его нет"""
         async with self.pool.acquire() as conn:
             await conn.execute('''
                 INSERT INTO users (user_id, username, first_name, created_at)
@@ -54,17 +48,26 @@ class Database:
             ''', user_id, username, first_name, datetime.now())
 
     async def add_transaction(self, user_id, t_type, amount, category, description, date):
-        """Добавляет транзакцию"""
+        """Добавляет транзакцию. date может быть строкой ISO или объектом date."""
+        # Преобразуем строку в объект date, если необходимо
+        if isinstance(date, str):
+            try:
+                date_obj = datetime.fromisoformat(date).date()
+            except ValueError:
+                # Если строка в другом формате, пробуем стандартный парсинг
+                date_obj = datetime.strptime(date, "%Y-%m-%d").date()
+        else:
+            date_obj = date
+
         async with self.pool.acquire() as conn:
             result = await conn.fetchrow('''
                 INSERT INTO transactions (user_id, type, amount, category, description, date, created_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
                 RETURNING id
-            ''', user_id, t_type, amount, category, description, date, datetime.now())
+            ''', user_id, t_type, amount, category, description, date_obj, datetime.now())
             return result['id']
 
     async def get_balance(self, user_id):
-        """Возвращает баланс, сумму доходов и расходов"""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow('''
                 SELECT 
@@ -79,7 +82,7 @@ class Database:
             return balance, income, expense
 
     async def get_transactions_by_period(self, user_id, start_date, end_date):
-        """Возвращает транзакции за период"""
+        """start_date и end_date в формате ISO (строки)"""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT type, amount, category, description, date 
@@ -90,7 +93,6 @@ class Database:
             return [(r['type'], r['amount'], r['category'], r['description'], r['date'].isoformat()) for r in rows]
 
     async def get_transactions_by_day(self, user_id, date_iso):
-        """Возвращает транзакции за конкретный день"""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT type, amount, category, description, date 
@@ -98,11 +100,9 @@ class Database:
                 WHERE user_id=$1 AND date=$2
                 ORDER BY date DESC
             ''', user_id, date_iso)
-            print(f"get_transactions_by_day: user_id={user_id}, date={date_iso}, найдено={len(rows)}")
             return [(r['type'], r['amount'], r['category'], r['description'], r['date'].isoformat()) for r in rows]
 
     async def get_expenses_by_category(self, user_id, start_date, end_date):
-        """Возвращает сумму расходов по категориям за период"""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT category, SUM(amount) as total 
@@ -114,7 +114,6 @@ class Database:
             return [(r['category'], r['total']) for r in rows]
 
     async def get_total_by_category(self, user_id, t_type, category, start_date=None, end_date=None):
-        """Возвращает общую сумму по категории"""
         async with self.pool.acquire() as conn:
             if start_date and end_date:
                 result = await conn.fetchval('''
@@ -132,7 +131,6 @@ class Database:
             return result
 
     async def get_recent_transactions(self, user_id, t_type=None, limit=10):
-        """Возвращает последние транзакции с ID"""
         async with self.pool.acquire() as conn:
             if t_type:
                 rows = await conn.fetch('''
@@ -153,7 +151,6 @@ class Database:
             return [(r['id'], r['type'], r['amount'], r['category'], r['description'], r['date'].isoformat()) for r in rows]
 
     async def delete_transaction(self, transaction_id, user_id):
-        """Удаляет транзакцию"""
         async with self.pool.acquire() as conn:
             result = await conn.execute('''
                 DELETE FROM transactions 
@@ -162,16 +159,27 @@ class Database:
             return result == "DELETE 1"
 
     async def update_transaction(self, transaction_id, user_id, field, new_value):
-        """Обновляет поле транзакции"""
         allowed_fields = {'amount', 'category', 'description', 'date'}
         if field not in allowed_fields:
             return False
         async with self.pool.acquire() as conn:
-            result = await conn.execute(
+            if field == 'date':
+                # Преобразуем строку в объект date (может быть ДД.ММ.ГГГГ или ISO)
+                try:
+                    # Сначала пробуем ДД.ММ.ГГГГ
+                    date_obj = datetime.strptime(new_value, "%d.%m.%Y").date()
+                except ValueError:
+                    try:
+                        # Пробуем ISO
+                        date_obj = datetime.fromisoformat(new_value).date()
+                    except ValueError:
+                        return False
+                new_value = date_obj
+            await conn.execute(
                 f"UPDATE transactions SET {field}=$1 WHERE id=$2 AND user_id=$3",
                 new_value, transaction_id, user_id
             )
-            return result.startswith("UPDATE")
+            return True
 
 # Создаём глобальный экземпляр базы данных
 db = Database()
