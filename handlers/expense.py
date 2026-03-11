@@ -253,13 +253,31 @@ async def delete_confirm(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("confirm_del_"))
 async def delete_execute(callback: CallbackQuery, state: FSMContext):
-    t_id = int(callback.data.split("_")[2])
-    user_id = callback.from_user.id
-    success = await db.delete_transaction(t_id, user_id)
-    if success:
-        await callback.message.edit_text("✅ Расход удалён.")
-    else:
-        await callback.message.edit_text("❌ Ошибка при удалении.")
-    await state.clear()
-    await callback.message.answer("Главное меню", reply_markup=kb.main_menu)
-    await callback.answer()
+    logger = logging.getLogger(__name__)
+    logger.info(f"delete_execute: callback.data={callback.data}")
+    try:
+        t_id = int(callback.data.split("_")[2])
+        user_id = callback.from_user.id
+        logger.info(f"Удаление транзакции id={t_id} для user_id={user_id}")
+
+        success = await db.delete_transaction(t_id, user_id)
+        logger.info(f"Результат delete_transaction: {success}")
+
+        if success:
+            await callback.message.edit_text("✅ Расход удалён.")
+        else:
+            await callback.message.edit_text("❌ Ошибка при удалении (транзакция не найдена).")
+
+        await state.clear()
+        logger.info("Состояние очищено")
+
+        await callback.message.answer("Главное меню", reply_markup=kb.main_menu)
+        logger.info("Отправлено сообщение с главным меню")
+
+        await callback.answer()
+        logger.info("Callback answer отправлен")
+
+    except Exception as e:
+        logger.error(f"Исключение в delete_execute: {e}", exc_info=True)
+        await callback.answer("Произошла ошибка", show_alert=True)
+
