@@ -10,5 +10,3 @@ if ADMIN_ID == 0:
     raise ValueError("❌ ADMIN_ID не задан в переменных окружения")
 if not DATABASE_URL:
     raise ValueError("❌ DATABASE_URL не задан в переменных окружения")
-
-
