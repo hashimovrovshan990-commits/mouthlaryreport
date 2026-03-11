@@ -81,24 +81,21 @@ async def process_analytics_calendar(callback: CallbackQuery, state: FSMContext)
         period_type = data['period_type']
         user_id = callback.from_user.id
 
-        print(f"Запрос аналитики за дату: {selected_date.isoformat()}")
-
         if period_type == "day":
-            transactions = get_transactions_by_day(user_id, selected_date.isoformat())
-            print(f"Найдено транзакций за день: {len(transactions)}")
+            transactions = await db.get_transactions_by_day(user_id, selected_date.isoformat())
             period_name = selected_date.strftime("%d.%m.%Y")
             start_date = end_date = selected_date.isoformat()
         elif period_type == "month":
             start_date = selected_date.replace(day=1).isoformat()
             next_month = selected_date.replace(day=28) + timedelta(days=4)
             end_date = (next_month - timedelta(days=next_month.day)).isoformat()
-            transactions = get_transactions_by_period(user_id, start_date, end_date)
+            transactions = await db.get_transactions_by_period(user_id, start_date, end_date)
             period_name = selected_date.strftime("%B %Y")
         elif period_type == "year":
             year = selected_date.year
             start_date = f"{year}-01-01"
             end_date = f"{year}-12-31"
-            transactions = get_transactions_by_period(user_id, start_date, end_date)
+            transactions = await db.get_transactions_by_period(user_id, start_date, end_date)
             period_name = str(year)
         else:
             await callback.answer("Ошибка")
@@ -135,7 +132,7 @@ async def show_analytics(message: types.Message, state: FSMContext, transactions
                     text += f" ({t[3]})"
                 text += f" – {utils.format_date_ru(t[4])}\n"
             if period_type != "day":
-                cat_expenses = get_expenses_by_category(message.chat.id, start_date, end_date)
+                cat_expenses = await db.get_expenses_by_category(message.chat.id, start_date, end_date)
                 if cat_expenses:
                     text += "\nКрупные траты по категориям:\n"
                     for cat, total in cat_expenses:
@@ -146,5 +143,4 @@ async def show_analytics(message: types.Message, state: FSMContext, transactions
         else:
             text += "\n💸 Расходов нет."
     await message.answer(text)
-
     await state.clear()
